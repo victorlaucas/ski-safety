@@ -4,8 +4,9 @@ Rear-facing computer vision system for detecting approaching skiers and providin
 
 Designed for:
 - Raspberry Pi 5  
-- AI HAT+ accelerator  
+- Raspberry Pi AI HAT+
 - Arducam camera  
+- TFMini Plus
 - Addressable LED strip  
 
 ---
