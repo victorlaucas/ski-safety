@@ -1,8 +1,0 @@
-name: ski
-channels:
-  - defaults
-dependencies:
-  - python=3.12
-  - pip:
-    - adafruit-circuitpython-tfmini==1.2.23
-prefix: /home/admin/miniconda3/envs/ski
