@@ -1,6 +1,8 @@
 import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
+gi.require_foreign("cairo")
+import cairo
 import os
 import argparse
 import multiprocessing
@@ -116,15 +118,9 @@ class GStreamerDetectionApp(GStreamerApp):
             + "identity name=identity_callback signal-handoffs=true ! "
             + "queue leaky=no max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! "
             + "hailooverlay qos=false line-thickness=4 font-thickness=4 ! "
-            + "queue leaky=no max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! "
             + "videoconvert n-threads=2 qos=false ! "
-
-            # fps displaysink
-            #+ "fpsdisplaysink video-sink=xvimagesink name=hailo_display sync=false"
-
-            # OR try the shared memory sink
+            + "video/x-raw, format=RGB ! "
             + "shmsink socket-path=/tmp/infered.feed sync=false wait-for-connection=false"
-
         )
         print(pipeline)
         return pipeline
