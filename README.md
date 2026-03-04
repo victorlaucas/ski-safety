@@ -227,27 +227,95 @@ Do not commit:
 
 ---
 
-# Development Notes
+## How It Works
 
-This project is designed primarily for Raspberry Pi deployment.
-
-If developing off-device:
-- Use recorded video files  
-- Mock hardware interfaces  
-- Keep hardware logic isolated  
+This system detects people in a live camera feed and measures their distance using a LiDAR sensor, running entirely on a Raspberry Pi 5 with a Hailo AI HAT+.
 
 ---
 
-# Recommended Practices
+### System Architecture
 
-- Always activate the virtual environment before running scripts.
-- Avoid running multiple producers simultaneously.
-- Use shared memory inspection (`ls /tmp`) for debugging.
-- Log FPS to detect performance regressions.
+The system is built as a multi-process pipeline where video data flows through shared memory segments, allowing each stage to run independently without blocking one another.
+```
+Arducam (1080p/30fps)
+    │
+    ▼  [GStreamer, NV12 format]
+/tmp/feed.raw  ◀──── shared memory socket
+    │
+    ▼  [GStreamer inference pipeline]
+Hailo AI HAT+  ◀──── runs YOLOv8m neural network
+  detects persons, positions, confidence scores
+    │
+    ▼  [Python callback fires per frame]
+detection.py
+  ├── filters detections to 'person' class only
+  ├── selects best candidate (nearest to frame center)
+  └── attaches LiDAR distance reading as label
+    │
+    ▼  [hailooverlay renders bounding boxes + labels]
+/tmp/infered.feed  ◀──── second shared memory socket
+    │
+    ▼
+Display (annotated video with FPS counter)
+```
 
 ---
 
-# License
+### Components
 
-Add license here if publishing.
+**`producer-camera.sh`**
+A GStreamer pipeline that captures frames from the Arducam at 1920×1080, 30fps in NV12 format and writes them to a shared memory socket at `/tmp/feed.raw`. Using `leaky=downstream` queuing ensures old frames are dropped if a downstream stage falls behind, keeping the feed real-time.
 
+**`detection_pipeline.py`**
+Defines the full GStreamer inference pipeline. It reads from `/tmp/feed.raw`, converts frames to RGB, passes them through the Hailo NPU for inference, runs object tracking, overlays bounding boxes, and writes the annotated output to `/tmp/infered.feed`. Key stages:
+- `hailocropper` — tiles the 1080p frame into 640×640 crops suitable for the model
+- `hailonet` — executes the YOLOv8 `.hef` model on the Hailo AI HAT+
+- `hailofilter` — decodes raw model outputs and applies Non-Maximum Suppression (NMS)
+- `hailotracker` — assigns consistent tracking IDs to the same person across frames
+- `hailooverlay` — draws bounding boxes and labels onto each frame
+
+**`detection.py`**
+The Python callback that fires on every frame after inference. It:
+1. Extracts all detections from the frame buffer
+2. Filters to the `person` class only
+3. Selects the best detection (prefers whoever overlaps the frame center beam point; falls back to nearest by center distance)
+4. Reads the latest LiDAR distance and attaches it as a `range: X.X m` label to the chosen detection
+
+**`lidar_tfmini.py`**
+Runs a background thread that continuously polls the TFMini Plus sensor over UART/USB-serial at 20Hz. Distance readings (in cm, converted to meters) are stored with a timestamp and accessed thread-safely by the detection callback. Readings older than 0.5 seconds are treated as invalid.
+
+**`consumer-infered-fpsdisplaysink.sh`** / **`consumer-raw-fpsdisplaysink.sh`**
+GStreamer consumer pipelines for displaying video output. The raw consumer is used as a health check to confirm the camera is streaming before inference starts. The inferred consumer displays the final annotated output with FPS overlay.
+
+---
+
+### Object Detection — How YOLOv8 Classifies Objects
+
+The file `yolov8m.hef` is a pre-trained YOLOv8 neural network compiled into Hailo's Executable Format. It was trained on the COCO dataset (80 object classes). When a frame arrives:
+
+1. The image is resized to 640×640 and divided into a grid of cells
+2. Each cell predicts candidate bounding boxes, class probabilities, and confidence scores
+3. Non-Maximum Suppression (NMS) removes overlapping duplicate boxes
+4. The result is a list of detections: `[label, confidence, x1, y1, x2, y2]`
+
+The Hailo AI HAT+ is a Neural Processing Unit (NPU) — dedicated hardware for the matrix operations that power neural networks. It runs inference far faster and more efficiently than the Pi's CPU, with the Pi handling all surrounding logic.
+
+Detection is filtered to the `person` class only (configurable via `target_classes` in `detection.py`). All other COCO classes are ignored at the callback level, though they still appear as bounding boxes in the raw overlay.
+
+---
+
+### Startup Procedure
+
+> Always run from the repository root: `cd ~/Documents/ski-safety`
+
+| Terminal | Command | Purpose |
+|----------|---------|---------|
+| A | `./src/producers/producer-camera.sh` | Start camera feed |
+| B | `./src/consumers/consumer-raw-fpsdisplaysink.sh` | Verify raw feed (optional) |
+| C | `source venv_hailo_rpi5_examples/bin/activate && source setup_env.sh` | Activate environment |
+| C | `python scripts/detection.py -i rpi -f --hef-path ./resources/yolov8m.hef` | Run inference |
+| D | `./src/consumers/consumer-infered-fpsdisplaysink.sh` | View annotated output |
+
+Confirm shared memory sockets exist before proceeding to the next step:
+- After Terminal A: `ls -l /tmp/feed.raw*`
+- After Terminal C (inference): `ls -l /tmp/infered.feed*`
