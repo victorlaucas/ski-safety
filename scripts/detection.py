@@ -96,6 +96,11 @@ def app_callback(pad, info, user_data):
     roi = hailo.get_roi_from_buffer(buffer)
     hailo_detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
 
+    # Remove all non-person detections so hailooverlay doesn't draw them
+    for detection in hailo_detections:
+        if detection.get_label() not in target_classes:
+            roi.remove_object(detection)
+
     # Filter detections to include only target classes
     filtered_detections = [
         detection for detection in hailo_detections
