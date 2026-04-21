@@ -98,22 +98,30 @@ class LEDStripController:
         side: str | None,
         distance_m: float | None,
         far_threshold_m: float,
+        mid_threshold_m: float,
         near_threshold_m: float,
     ) -> None:
         """
-        Basic distance-based warning colors:
+        Three-zone distance-based warning colors:
         - <= near_threshold_m: red
-        - <= far_threshold_m: orange
+        - <= mid_threshold_m: blue
+        - <= far_threshold_m: green
         - otherwise off
+
+        Note:
+        This strip is configured with neopixel.GRB ordering, so the tuples below
+        are written to produce the intended visible colors on the LEDs.
         """
         if distance_m is None:
             self.off()
             return
 
         if distance_m <= near_threshold_m:
-            color = (255, 0, 0)
+            color = (255, 0, 0)      # red with GRB ordering
+        elif distance_m <= mid_threshold_m:
+            color = (0, 0, 255)      # blue
         elif distance_m <= far_threshold_m:
-            color = (0, 0, 255)
+            color = (0, 255, 0)      # green with GRB ordering
         else:
             self.off()
             return

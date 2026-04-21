@@ -41,7 +41,8 @@ LED_ENABLED = os.environ.get("LED_ENABLED", "1") == "1"
 LED_COUNT = int(os.environ.get("LED_COUNT", "30"))
 LED_BRIGHTNESS = float(os.environ.get("LED_BRIGHTNESS", "0.10"))
 WARNING_FAR_M = float(os.environ.get("WARNING_FAR_M", "5.0"))
-WARNING_NEAR_M = float(os.environ.get("WARNING_NEAR_M", "2"))
+WARNING_MID_M = float(os.environ.get("WARNING_MID_M", "2.5"))
+WARNING_NEAR_M = float(os.environ.get("WARNING_NEAR_M", "1.1"))
 CENTER_BAND_FRACTION = float(os.environ.get("CENTER_BAND_FRACTION", "0.20"))
 LIDAR_STALE_SECONDS = float(os.environ.get("LIDAR_STALE_SECONDS", "0.5"))
 CENTER_LED_MODE = os.environ.get("CENTER_LED_MODE", "all")  # all or center
@@ -201,6 +202,7 @@ def app_callback(pad, info, user_data):
                 side=side,
                 distance_m=dist_m,
                 far_threshold_m=WARNING_FAR_M,
+                mid_threshold_m=WARNING_MID_M,
                 near_threshold_m=WARNING_NEAR_M,
             )
     else:
